@@ -1,0 +1,838 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Practical 9 - In-Memory Caching & Response Time Comparison</title>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+  <style>
+    :root {
+      --bg: #f8fafc;
+      --surface: #ffffff;
+      --surface-alt: #f1f5f9;
+      --border: #e2e8f0;
+      --border-strong: #cbd5e1;
+
+      --text: #0f172a;
+      --text-muted: #64748b;
+      --text-faint: #94a3b8;
+
+      --primary: #4f46e5;
+      --primary-hover: #4338ca;
+      --primary-soft: #eef2ff;
+
+      --success: #16a34a;
+      --success-soft: #dcfce7;
+      --warning: #d97706;
+      --warning-soft: #fef3c7;
+      --danger: #dc2626;
+      --danger-soft: #fee2e2;
+
+      --radius: 12px;
+      --radius-sm: 8px;
+      --shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.05);
+      --shadow: 0 1px 3px rgba(15, 23, 42, 0.08), 0 1px 2px rgba(15, 23, 42, 0.04);
+      --shadow-md: 0 4px 12px rgba(15, 23, 42, 0.08);
+  }
+
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+        "Helvetica Neue", Arial, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.55;
+      font-size: 15px;
+      -webkit-font-smoothing: antialiased;
+      padding: 32px 20px 64px;
+    }
+
+    .container {
+      max-width: 1120px;
+      margin: 0 auto;
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+    }
+
+    /* ---------- Header ---------- */
+
+    .page-header {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 24px;
+      flex-wrap: wrap;
+    }
+
+    .page-header h1 {
+      font-size: 24px;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+      line-height: 1.25;
+    }
+
+    .page-header .subtitle {
+      color: var(--text-muted);
+      font-size: 14px;
+      margin-top: 6px;
+      max-width: 620px;
+    }
+
+    .eyebrow {
+      display: inline-block;
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--primary);
+      background: var(--primary-soft);
+      padding: 4px 10px;
+      border-radius: 999px;
+      margin-bottom: 10px;
+    }
+
+    /* ---------- Status ---------- */
+
+    .status-bar {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      padding: 8px 14px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      box-shadow: var(--shadow-sm);
+      white-space: nowrap;
+    }
+
+    .dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--danger);
+      flex-shrink: 0;
+    }
+
+    .dot.connected {
+      background: var(--success);
+      box-shadow: 0 0 0 3px var(--success-soft);
+    }
+
+    .status-text {
+      font-size: 13px;
+      color: var(--text-muted);
+    }
+
+    .status-text strong {
+      color: var(--text);
+      font-weight: 600;
+    }
+
+    /* ---------- Cards ---------- */
+
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      overflow: hidden;
+    }
+
+    .card-header {
+      padding: 18px 22px 14px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 16px;
+      flex-wrap: wrap;
+    }
+
+    .card-header h2 {
+      font-size: 16px;
+      font-weight: 600;
+      letter-spacing: -0.01em;
+    }
+
+    .card-header p {
+      color: var(--text-muted);
+      font-size: 13px;
+      margin-top: 4px;
+      max-width: 640px;
+    }
+
+    .card-body {
+      padding: 22px;
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+    }
+
+    .section-title {
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--text);
+      letter-spacing: -0.005em;
+    }
+
+    /* ---------- Buttons ---------- */
+
+    button {
+      font-family: inherit;
+      font-size: 13.5px;
+      font-weight: 500;
+      line-height: 1;
+      padding: 9px 14px;
+      border-radius: var(--radius-sm);
+      border: 1px solid var(--border-strong);
+      background: var(--surface);
+      color: var(--text);
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      transition: background 0.15s ease, border-color 0.15s ease,
+        box-shadow 0.15s ease, transform 0.05s ease;
+      box-shadow: var(--shadow-sm);
+    }
+
+    button:hover:not(:disabled) {
+      background: var(--surface-alt);
+      border-color: #94a3b8;
+    }
+
+    button:active:not(:disabled) {
+      transform: translateY(1px);
+    }
+
+    button:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    button:focus-visible {
+      outline: 2px solid var(--primary);
+      outline-offset: 2px;
+    }
+
+    .btn-primary {
+      background: var(--primary);
+      border-color: var(--primary);
+      color: #fff;
+    }
+
+    .btn-primary:hover:not(:disabled) {
+      background: var(--primary-hover);
+      border-color: var(--primary-hover);
+    }
+
+    .btn-success {
+      background: var(--success);
+      border-color: var(--success);
+      color: #fff;
+    }
+
+    .btn-success:hover:not(:disabled) {
+      background: #15803d;
+      border-color: #15803d;
+    }
+
+    .btn-danger {
+      background: var(--danger);
+      border-color: var(--danger);
+      color: #fff;
+    }
+
+    .btn-danger:hover:not(:disabled) {
+      background: #b91c1c;
+      border-color: #b91c1c;
+    }
+
+    .btn-sm {
+      font-size: 12.5px;
+      padding: 7px 11px;
+    }
+
+    .actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
+    /* ---------- Stats ---------- */
+
+    .stats {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+      gap: 12px;
+    }
+
+    .stat {
+      padding: 14px 16px;
+      background: var(--surface-alt);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      display: flex;
+      flex-direction: column;
+      gap: 3px;
+    }
+
+    .stat .label {
+      font-size: 11.5px;
+      font-weight: 600;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      color: var(--text-muted);
+    }
+
+    .stat .value {
+      font-size: 26px;
+      font-weight: 700;
+      letter-spacing: -0.03em;
+      line-height: 1.2;
+      color: var(--text);
+    }
+
+    .stat .sub {
+      font-size: 12px;
+      color: var(--text-faint);
+    }
+
+    .stat.uncached .value {
+      color: var(--warning);
+    }
+
+    .stat.cached .value {
+      color: var(--success);
+    }
+
+    .stat.speedup .value {
+      color: var(--primary);
+    }
+
+    /* ---------- Table ---------- */
+
+    .table-wrap {
+      overflow-x: auto;
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13.5px;
+    }
+
+    thead th {
+      background: var(--surface-alt);
+      padding: 10px 14px;
+      text-align: left;
+      font-size: 11.5px;
+      font-weight: 600;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      color: var(--text-muted);
+      border-bottom: 1px solid var(--border);
+      white-space: nowrap;
+    }
+
+    tbody td {
+      padding: 10px 14px;
+      border-bottom: 1px solid var(--border);
+      color: var(--text);
+      white-space: nowrap;
+    }
+
+    tbody tr:last-child td {
+      border-bottom: none;
+    }
+
+    tbody tr:nth-child(odd) {
+      background: #fcfdfe;
+    }
+
+    tbody tr:hover {
+      background: var(--primary-soft);
+    }
+
+    .empty {
+      padding: 28px 16px;
+      text-align: center;
+      color: var(--text-faint);
+      font-size: 13.5px;
+    }
+
+    /* ---------- Badges ---------- */
+
+    .badge {
+      display: inline-block;
+      padding: 3px 9px;
+      border-radius: 999px;
+      font-size: 11.5px;
+      font-weight: 600;
+      border: 1px solid transparent;
+      white-space: nowrap;
+    }
+
+    .badge-miss {
+      background: var(--warning-soft);
+      color: #92400e;
+      border-color: #fcd34d;
+    }
+
+    .badge-hit {
+      background: var(--success-soft);
+      color: #15803d;
+      border-color: #86efac;
+    }
+
+    .badge-neutral {
+      background: var(--surface-alt);
+      color: var(--text-muted);
+      border-color: var(--border-strong);
+    }
+
+    code {
+      font-family: "SFMono-Regular", Menlo, Monaco, Consolas, "Courier New", monospace;
+      font-size: 12.5px;
+      background: var(--surface-alt);
+      border: 1px solid var(--border);
+      border-radius: 5px;
+      padding: 1px 5px;
+    }
+
+    /* ---------- Forms ---------- */
+
+    .form-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 12px;
+    }
+
+    .field {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .field label {
+      font-size: 12.5px;
+      font-weight: 500;
+      color: var(--text-muted);
+    }
+
+    .field input {
+      font-family: inherit;
+      font-size: 14px;
+      padding: 9px 11px;
+      border: 1px solid var(--border-strong);
+      border-radius: var(--radius-sm);
+      background: var(--surface);
+      color: var(--text);
+      outline: none;
+      transition: border-color 0.15s ease, box-shadow 0.15s ease;
+      width: 100%;
+    }
+
+    .field input::placeholder {
+      color: var(--text-faint);
+    }
+
+    .field input:focus {
+      border-color: var(--primary);
+      box-shadow: 0 0 0 3px var(--primary-soft);
+    }
+
+    /* ---------- Panels ---------- */
+
+    .panel {
+      background: var(--surface-alt);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      padding: 14px 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .panel-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+
+    .pre {
+      font-family: "SFMono-Regular", Menlo, Monaco, Consolas, "Courier New", monospace;
+      font-size: 12.5px;
+      line-height: 1.6;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      padding: 12px 14px;
+      max-height: 230px;
+      overflow: auto;
+      white-space: pre-wrap;
+      word-break: break-word;
+      color: var(--text);
+      margin: 0;
+    }
+
+    .log {
+      font-family: "SFMono-Regular", Menlo, Monaco, Consolas, "Courier New", monospace;
+      font-size: 12.5px;
+      line-height: 1.65;
+      max-height: 260px;
+      overflow: auto;
+      white-space: normal;
+      word-break: break-word;
+    }
+
+    .log-line {
+      padding: 5px 0;
+      border-bottom: 1px dashed var(--border);
+      color: var(--text);
+    }
+
+    .log-line:last-child {
+      border-bottom: none;
+    }
+
+    .log-time {
+      color: var(--text-faint);
+      margin-right: 8px;
+      font-weight: 500;
+    }
+
+    .log-empty {
+      color: var(--text-faint);
+      font-size: 13px;
+      font-family: inherit;
+      padding: 8px 0;
+    }
+
+    .log strong {
+      font-weight: 600;
+    }
+
+    .mono {
+      font-family: "SFMono-Regular", Menlo, Monaco, Consolas, "Courier New", monospace;
+      font-variant-numeric: tabular-nums;
+    }
+
+    /* ---------- Misc ---------- */
+
+    .hint {
+      font-size: 13px;
+      color: var(--text-muted);
+      display: flex;
+      align-items: flex-start;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .divider {
+      height: 1px;
+      background: var(--border);
+      border: none;
+    }
+
+    .grid-2 {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+      gap: 20px;
+      align-items: start;
+    }
+
+    .stack {
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+    }
+
+    @keyframes pulse {
+      0%,
+      100% {
+        opacity: 1;
+      }
+      50% {
+        opacity: 0.55;
+      }
+    }
+
+    .is-loading {
+      animation: pulse 1.1s ease-in-out infinite;
+    }
+
+    @media (max-width: 640px) {
+      body {
+        padding: 20px 14px 48px;
+      }
+
+      .page-header h1 {
+        font-size: 20px;
+      }
+
+      .card-body {
+        padding: 16px;
+      }
+
+      .stat .value {
+        font-size: 22px;
+      }
+    }
+  </style>
+</head>
+
+<body>
+  <div class="container">
+
+    <div class="page-header">
+      <div>
+        <span class="eyebrow">Advanced Web Development &middot; Practical 9</span>
+        <h1>In-Memory Caching &amp; Response Time Comparison</h1>
+        <p class="subtitle">
+          Measures <strong>GET /tasks</strong> with and without the
+          <code>node-cache</code> in-memory layer. Write operations
+          (POST / PUT / DELETE) invalidate the cache automatically.
+        </p>
+      </div>
+
+      <div class="status-bar">
+        <span class="dot" id="statusDot"></span>
+        <span class="status-text">
+          Backend <strong id="statusText">Checking...</strong>
+          &nbsp;&middot;&nbsp; <strong id="baseUrl">http://localhost:3000</strong>
+        </span>
+        <button class="btn-sm" id="btnPing">Ping</button>
+      </div>
+    </div>
+
+    <!-- ============ 1. CACHE TESTS ============ -->
+    <section class="card">
+      <div class="card-header">
+        <div>
+          <h2>1. Cache Test Controls</h2>
+          <p>
+            Clear the cache before each uncached reading for a true cold
+            measurement. Cached readings must run immediately after warming
+            (TTL = 60&nbsp;seconds).
+          </p>
+        </div>
+        <div class="actions">
+          <button id="btnClearCache">Clear Cache</button>
+          <button id="btnCacheStats">Cache Stats</button>
+        </div>
+      </div>
+
+      <div class="card-body">
+        <div class="actions">
+          <button class="btn-danger" id="btnUncached3">
+            Run 3 Uncached Readings
+          </button>
+          <button class="btn-success" id="btnCached3">
+            Run 3 Cached Readings
+          </button>
+          <button class="btn-primary" id="btnGetOnce">Single GET /tasks</button>
+          <button id="btnClearResults">Reset Results</button>
+        </div>
+
+        <div class="hint">
+          <span class="badge badge-miss">MISS</span>
+          <span>First GET after a cache clear &mdash; reads from MongoDB.</span>
+          <span class="badge badge-hit">HIT</span>
+          <span>Subsequent GETs within 60&nbsp;s &mdash; served from memory.</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ 2. COMPARISON ============ -->
+    <section class="card">
+      <div class="card-header">
+        <div>
+          <h2>2. Response Time Comparison</h2>
+          <p>Average, minimum and maximum latency for each scenario.</p>
+        </div>
+        <span class="status-text">
+          Uncached <strong id="uCount">0</strong> &nbsp;&middot;&nbsp;
+          Cached <strong id="cCount">0</strong>
+        </span>
+      </div>
+
+      <div class="card-body">
+        <div class="stats">
+          <div class="stat uncached">
+            <span class="label">Uncached Avg</span>
+            <span class="value mono" id="uncachedAvg">&mdash;</span>
+            <span class="sub mono" id="uncachedMinMax">Min: &mdash; &nbsp;|&nbsp; Max: &mdash;</span>
+          </div>
+
+          <div class="stat cached">
+            <span class="label">Cached Avg</span>
+            <span class="value mono" id="cachedAvg">&mdash;</span>
+            <span class="sub mono" id="cachedMinMax">Min: &mdash; &nbsp;|&nbsp; Max: &mdash;</span>
+          </div>
+
+          <div class="stat speedup">
+            <span class="label">Speedup</span>
+            <span class="value mono" id="speedup">&mdash;</span>
+            <span class="sub" id="speedupNote">Cached vs uncached</span>
+          </div>
+
+          <div class="stat">
+            <span class="label">Last Request</span>
+            <span class="value mono" id="lastTime">&mdash;</span>
+            <span class="sub" id="lastStatus">Status &mdash;</span>
+          </div>
+        </div>
+
+        <div class="stack" style="gap: 10px">
+          <div class="panel-head">
+            <span class="section-title">Readings</span>
+            <span class="status-text">Newest first</span>
+          </div>
+
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>#</th>
+                  <th>Type</th>
+                  <th>Cache</th>
+                  <th>HTTP</th>
+                  <th>Time (ms)</th>
+                  <th>Time (s)</th>
+                  <th>Timestamp</th>
+                </tr>
+              </thead>
+              <tbody id="tbody"></tbody>
+            </table>
+            <div class="empty" id="emptyTable">
+              No readings yet &mdash; run an uncached or cached test above.
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ 3 & 4 ============ -->
+    <div class="grid-2">
+
+      <section class="card">
+        <div class="card-header">
+          <div>
+            <h2>3. Write Operations</h2>
+            <p>
+              Successful writes call <code>invalidateCache()</code>, so the next
+              GET becomes a <span class="badge badge-miss">MISS</span>.
+            </p>
+          </div>
+        </div>
+
+        <div class="card-body">
+          <div class="panel">
+            <span class="section-title">Create Task &mdash; POST /tasks</span>
+            <form id="formCreate" class="stack" style="gap: 12px">
+              <div class="form-grid">
+                <div class="field">
+                  <label for="title">Title</label>
+                  <input type="text" id="title" placeholder="e.g. Practical 9 Test" required />
+                </div>
+                <div class="field">
+                  <label for="description">Description</label>
+                  <input type="text" id="description" placeholder="Testing cache invalidation" />
+                </div>
+              </div>
+              <div class="actions">
+                <button type="submit" class="btn-primary">Add Task &amp; Invalidate</button>
+                <button type="button" id="btnTestInvalidation">Test Invalidation</button>
+              </div>
+            </form>
+          </div>
+
+          <div class="panel">
+            <span class="section-title">Update / Delete &mdash; PUT &amp; DELETE /tasks/:id</span>
+            <div class="form-grid">
+              <div class="field">
+                <label for="taskId">Task ID</label>
+                <input type="text" id="taskId" placeholder="Paste the _id here" />
+              </div>
+              <div class="field">
+                <label for="utitle">New Title</label>
+                <input type="text" id="utitle" placeholder="Updated title" />
+              </div>
+              <div class="field">
+                <label for="udesc">New Description</label>
+                <input type="text" id="udesc" placeholder="Updated description" />
+              </div>
+            </div>
+            <div class="actions">
+              <button class="btn-success" id="btnUpdate">PUT</button>
+              <button class="btn-danger" id="btnDelete">DELETE</button>
+              <button id="btnFetchTasks">List Task IDs</button>
+            </div>
+          </div>
+
+          <div class="panel">
+            <div class="panel-head">
+              <span class="section-title">Task Preview</span>
+            </div>
+            <pre class="pre" id="taskPreview">No task selected yet.</pre>
+          </div>
+        </div>
+      </section>
+
+      <div class="stack">
+
+        <section class="card">
+          <div class="card-header">
+            <div>
+              <h2>4. Activity Log</h2>
+              <p>Every request with timestamp, status and latency.</p>
+            </div>
+            <button class="btn-sm" id="btnClearLogs">Clear</button>
+          </div>
+          <div class="card-body">
+            <div class="panel">
+              <div class="log" id="log">
+                <div class="log-empty">Waiting for the first request&hellip;</div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section class="card">
+          <div class="card-header">
+            <div>
+              <h2>5. Last GET /tasks Response</h2>
+              <p>Confirms fresh data is returned after invalidation.</p>
+            </div>
+            <button class="btn-sm" id="btnCopyJson">Copy JSON</button>
+          </div>
+          <div class="card-body">
+            <pre class="pre" id="jsonPreview">[]</pre>
+          </div>
+        </section>
+
+      </div>
+    </div>
+
+  </div>
+
+  <script src="./app.js"></script>
+</body>
+
+</html>
