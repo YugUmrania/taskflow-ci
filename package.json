@@ -1,0 +1,30 @@
+{
+  "name": "task-management-backend",
+  "version": "1.0.0",
+  "description": "Express + Mongoose REST API for the TaskFlow Task Management application",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js",
+    "test": "jest --runInBand"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "jest": {
+    "testEnvironment": "node"
+  },
+  "dependencies": {
+    "cors": "^2.8.6",
+    "dotenv": "^16.6.1",
+    "express": "^5.2.1",
+    "mongoose": "^9.9.2",
+    "node-cache": "^5.1.2",
+    "openai": "^4.77.0"
+  },
+  "devDependencies": {
+    "jest": "^29.7.0",
+    "supertest": "^7.0.0"
+  }
+}
