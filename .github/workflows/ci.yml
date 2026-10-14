@@ -10,6 +10,11 @@ jobs:
   build-and-test:
     runs-on: ubuntu-latest
 
+    # The backend lives in its own folder, so every command runs from there.
+    defaults:
+      run:
+        working-directory: task-management-backend
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
